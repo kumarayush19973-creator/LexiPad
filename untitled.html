@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>लाइव कोड एडिटर (स्थिर ऊँचाई)</title>
+    <!-- Tailwind CSS लोड करें -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 1. HTML और Body को पूरी ऊँचाई दें */
+        html, body {
+            height: 100%;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            /* Flexbox का उपयोग करके ऊर्ध्वाधर लेआउट सेट करें */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* बॉडी स्क्रॉल को रोकें */
+            background-color: #f7f9fb; 
+        }
+        
+        /* कोड एडिटर (Textarea) की स्टाइलिंग */
+        #code-editor {
+            resize: none;
+            font-family: monospace;
+            line-height: 1.5;
+            tab-size: 4;
+            /* Flex-grow से पूरी उपलब्ध ऊँचाई लें */
+            height: 100%; 
+            background-color: #ffffff;
+        }
+
+        /* iframe के लिए स्टाइलिंग */
+        #preview-frame {
+            border: none;
+            background-color: white;
+            height: 100%;
+            width: 100%;
+        }
+
+        /* मुख्य कंटेनर: हेडर के अलावा बची हुई सारी जगह लेता है (flex-grow) */
+        .main-container {
+            display: grid;
+            grid-template-rows: 1fr 1fr; /* मोबाइल पर 50/50 ऊर्ध्वाधर विभाजन */
+            flex-grow: 1; /* बची हुई ऊर्ध्वाधर जगह भरें */
+            gap: 8px;
+            padding: 8px;
+            overflow: hidden; /* ग्रिड कंटेनर के अंदर स्क्रॉलिंग को प्रबंधित करने दें */
+        }
+
+        /* डेस्कटॉप/टैबलेट पर 50/50 क्षैतिज विभाजन */
+        @media (min-width: 768px) {
+            .main-container {
+                grid-template-rows: 1fr; 
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- हेडर -->
+    <header class="bg-indigo-700 text-white p-3 shadow-xl flex justify-between items-center h-16 shrink-0">
+        <h1 class="text-xl font-bold">लाइव वेब कोड एडिटर (स्थिर)</h1>
+        <button id="preview-button" class="bg-emerald-400 hover:bg-emerald-500 text-gray-900 font-bold py-2 px-6 rounded-full shadow-lg transition duration-200 transform hover:scale-105 active:scale-95">
+            मैन्युअल अपडेट
+        </button>
+    </header>
+
+    <!-- मुख्य कंटेनर - कोड और प्रीव्यू एरिया -->
+    <div class="main-container">
+        
+        <!-- 1. प्रीव्यू आउटपुट एरिया (ऊपर) -->
+        <!-- overflow-y-auto सुनिश्चित करता है कि प्रीव्यू कंटेंट खुद स्क्रॉल करे -->
+        <div class="flex flex-col h-full bg-white rounded-xl shadow-lg overflow-hidden">
+            <h2 class="p-3 bg-gray-100 text-sm font-semibold text-gray-700 border-b border-gray-200 shrink-0">लाइव प्रीव्यू</h2>
+            <div class="flex-grow overflow-y-auto">
+                <iframe id="preview-frame" class="w-full h-full"></iframe>
+            </div>
+        </div>
+
+        <!-- 2. कोड इनपुट एरिया (नीचे) -->
+        <!-- overflow-hidden के कारण, textarea अपने आप स्क्रॉल मैनेज करेगा -->
+        <div class="flex flex-col h-full bg-white rounded-xl shadow-lg overflow-hidden">
+            <h2 class="p-3 bg-gray-100 text-sm font-semibold text-gray-700 border-b border-gray-200 shrink-0">कोड इनपुट (HTML, CSS, JS)</h2>
+            <textarea 
+                id="code-editor" 
+                class="flex-grow p-4 outline-none border-none text-base"
+                placeholder="यहाँ अपना HTML, CSS और JavaScript कोड लिखें..."
+            ></textarea>
+        </div>
+
+    </div>
+
+    <script>
+        const editor = document.getElementById('code-editor');
+        const previewFrame = document.getElementById('preview-frame');
+        const previewButton = document.getElementById('preview-button');
+        let updateTimer; 
+
+        // खाली एडिटर होने पर दिखाने के लिए HTML
+        const EMPTY_MESSAGE_HTML = `
+            <style>
+                body { font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #ecf0f1; color: #7f8c8d; text-align: center; padding: 20px; }
+                .placeholder { border: 2px dashed #bdc3c7; padding: 30px; border-radius: 10px; max-width: 90%; }
+                h2 { margin: 0; color: #2c3e50; font-size: 1.5rem; }
+                p { margin-top: 10px; font-size: 1rem; }
+            </style>
+            <body>
+                <div class="placeholder">
+                    <h2>कोड एडिटर खाली है</h2>
+                    <p>जैसे-जैसे आप टाइप करेंगे, प्रीव्यू यहीं दिखाई देगा।</p>
+                </div>
+            </body>
+        `;
+
+        // फ़ंक्शन: प्रीव्यू को अपडेट करें
+        function updatePreview() {
+            const code = editor.value.trim(); 
+            const doc = previewFrame.contentWindow.document;
+
+            doc.open();
+
+            if (code.length === 0) {
+                doc.write(EMPTY_MESSAGE_HTML);
+            } else {
+                doc.write(code);
+            }
+
+            doc.close();
+        }
+
+        // Debouncing फ़ंक्शन
+        function handleInput() {
+            clearTimeout(updateTimer);
+            updateTimer = setTimeout(updatePreview, 200); 
+        }
+
+        // A. जब भी एडिटर में कोई इनपुट आए, प्रीव्यू अपडेट करो
+        editor.addEventListener('input', handleInput);
+
+        // B. 'मैन्युअल अपडेट' बटन क्लिक होने पर तुरंत अपडेट करो
+        previewButton.addEventListener('click', updatePreview);
+
+        // C. पेज लोड होने पर शुरुआती खाली स्टेट को दिखाओ
+        window.onload = () => {
+            updatePreview();
+        };
+
+    </script>
+</body>
+</html>
+
